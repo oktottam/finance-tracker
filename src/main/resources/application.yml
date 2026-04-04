@@ -1,0 +1,49 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: finance-tracker
+
+  # Kết nối Database (Khớp với docker-compose)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/finance_db
+    username: admin
+    password: password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update # Tự động tạo bảng từ Entity của Tâm
+    show-sql: true # Hiện log SQL để Tâm dễ debug
+    properties:
+      hibernate:
+        "[format_sql]": true
+        "[highlight_sql]": true # Thêm cái này để log SQL có màu cho đẹp Tâm nè
+
+  # Kết nối Redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  # Kết nối Elasticsearch
+  elasticsearch:
+    uris: http://localhost:9200
+    
+  # Kết nối RabbitMQ
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: myuser
+    password: secret
+
+  cache:
+    type: redis
+    
+# Cấu hình Swagger để nhà tuyển dụng xem API
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

@@ -1,0 +1,72 @@
+# services:
+#   elasticsearch:
+#     image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.10'
+#     environment:
+#       - 'ELASTIC_PASSWORD=secret'
+#       - 'discovery.type=single-node'
+#       - 'xpack.security.enabled=false'
+#     ports:
+#       - '9200'
+#       - '9300'
+#   postgres:
+#     image: 'postgres:latest'
+#     environment:
+#       - 'POSTGRES_DB=mydatabase'
+#       - 'POSTGRES_PASSWORD=secret'
+#       - 'POSTGRES_USER=myuser'
+#     ports:
+#       - '5432'
+#   rabbitmq:
+#     image: 'rabbitmq:latest'
+#     environment:
+#       - 'RABBITMQ_DEFAULT_PASS=secret'
+#       - 'RABBITMQ_DEFAULT_USER=myuser'
+#     ports:
+#       - '5672'
+#   redis:
+#     image: 'redis:latest'
+#     ports:
+#       - '6379'
+
+services:
+  elasticsearch:
+    image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.10'
+    environment:
+      - 'ELASTIC_PASSWORD=secret'
+      - 'discovery.type=single-node'
+      - 'xpack.security.enabled=false'
+    ports:
+      - '9200:9200' # Cố định cổng để gọi API Search
+
+  # Thêm Kibana vào đây cho Tâm
+  kibana:
+    image: 'docker.elastic.co/kibana/kibana:7.17.10'
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - '5601:5601'
+    depends_on:
+      - elasticsearch
+
+  postgres:
+    image: 'postgres:latest'
+    environment:
+      - 'POSTGRES_DB=mydatabase'
+      - 'POSTGRES_PASSWORD=secret'
+      - 'POSTGRES_USER=myuser'
+    ports:
+      - '5432:5432' # Cố định để dùng tool quản lý DB cho dễ
+
+  rabbitmq:
+    image: 'rabbitmq:3-management-alpine' # Đổi sang bản có UI quản lý
+    environment:
+      - 'RABBITMQ_DEFAULT_PASS=secret'
+      - 'RABBITMQ_DEFAULT_USER=myuser'
+    ports:
+      - '5672:5672'
+      - '15672:15672' # Cổng vào giao diện quản lý RabbitMQ
+
+  redis:
+    image: 'redis:latest'
+    ports:
+      - '6379:6379'
