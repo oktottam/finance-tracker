@@ -7,9 +7,9 @@ spring:
 
   # Kết nối Database (Khớp với docker-compose)
   datasource:
-    url: jdbc:postgresql://localhost:5432/finance_db
-    username: admin
-    password: password
+    url: jdbc:postgresql://localhost:5432/mydatabase 
+    username: myuser
+    password: secret
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -40,10 +40,16 @@ spring:
 
   cache:
     type: redis
-    
+
 # Cấu hình Swagger để nhà tuyển dụng xem API
 springdoc:
   api-docs:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+app:
+  jwt:
+    # Nếu có biến môi trường JWT_SECRET thì dùng, không thì dùng cái mặc định sau dấu :
+    secret: ${JWT_SECRET:TamVip130IQFinanceTrackerSecretKey2026_MustBeLongAndSecure}
+    expiration-ms: ${JWT_EXPIRATION:86400000} # 1 ngày

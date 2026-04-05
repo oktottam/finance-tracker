@@ -2,6 +2,7 @@ package com.tam.finance_tracker.domain;
 
 import java.math.BigDecimal;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -40,4 +41,6 @@ public class CreditCard extends BaseEntity {
     @Min(0)
     private Integer dueDateOffset; // Ví dụ: 15 ngày sau sao kê thì phải trả tiền
     
+    @Column(nullable = false)
+    private String ownerUsername; // Lưu tên đăng nhập của chủ thẻ để liên kết với User
 }

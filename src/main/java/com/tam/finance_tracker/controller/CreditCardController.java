@@ -3,6 +3,8 @@ package com.tam.finance_tracker.controller;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,18 +25,21 @@ public class CreditCardController {
     private final CreditCardService creditCardService;
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('USER', 'ADMIN')") // Phải login mới được tạo
     public ResponseEntity<CreditCard> createCard(@Valid @RequestBody CreditCardRequest request) {
-        CreditCard card = new CreditCard();
-        card.setCardName(request.getCardName());
-        card.setLimitAmount(request.getLimitAmount());
-        card.setStatementDay(request.getStatementDay());
-        card.setDueDateOffset(request.getDueDateOffset());
+        // Lấy tên người đang login để gán làm chủ thẻ
+        String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
         
-        return ResponseEntity.ok(creditCardService.createCard(card));
+        // Đẩy toàn bộ logic tạo và gán User xuống Service cho sạch
+        return ResponseEntity.ok(creditCardService.createCard(request, currentUser));
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<List<CreditCard>> getAllCards() {
-        return ResponseEntity.ok(creditCardService.getAllCards());
+        String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
+        
+        // Chỉ lấy thẻ của ĐÚNG người đang login
+        return ResponseEntity.ok(creditCardService.getCardsByUsername(currentUser));
     }
 }
