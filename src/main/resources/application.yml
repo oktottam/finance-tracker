@@ -28,8 +28,10 @@ spring:
       port: 6379
 
   # Kết nối Elasticsearch
+  # Elasticsearch (Cập nhật bản mới)
   elasticsearch:
-    uris: http://localhost:9200
+    client:
+      uris: http://localhost:9200
     
   # Kết nối RabbitMQ
   rabbitmq:
@@ -40,6 +42,26 @@ spring:
 
   cache:
     type: redis
+    
+# 🛡️ PHẦN MỚI: Cấu hình Circuit Breaker (Cùng hàng với 'spring')
+resilience4j:
+  circuitbreaker:
+    instances:
+      esService: # Phải khớp với name ở Annotation @CircuitBreaker
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000ms
+        permittedNumberOfCallsInHalfOpenState: 3
+
+# 📜 PHẦN MỚI: Cấu hình Logging để xem Đa luồng
+logging:
+  level:
+    root: INFO
+    "[com.tam.finance_tracker]": DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 # Cấu hình Swagger để nhà tuyển dụng xem API
 springdoc:
