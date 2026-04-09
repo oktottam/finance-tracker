@@ -44,3 +44,4 @@ src/main/resources/application-*.yml
 # Docker local overrides
 compose.override.yaml
 docker-compose.override.yml
+compose.yaml
