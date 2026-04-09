@@ -4,11 +4,16 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
+
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.opencsv.CSVWriter;
 import com.tam.finance_tracker.domain.TaskStatus;
+import com.tam.finance_tracker.domain.Transaction;
 import com.tam.finance_tracker.repository.ExportTaskRepository;
 import com.tam.finance_tracker.repository.TransactionRepository;
 
@@ -24,65 +29,67 @@ public class AsyncExportService {
     private final TelegramBotService botService; // 🚀 Tiêm "linh hồn" của Bot vào đây
 
     @Async("exportTaskExecutor")
+    @Transactional(readOnly = true) // BẮT BUỘC để duy trì Connection cho Stream
     public void processExport(String taskId) { // Trả về void vì đã có DB theo dõi
         // BƯỚC 1: Khởi động - Báo cho DB và báo cho Tâm qua Telegram
         updateTaskStatus(taskId, TaskStatus.PROCESSING, 0, null);
-        botService.sendMessage("🚀 [START] Task " + taskId + " đã bắt đầu xử lý!");
+        botService.sendMessage("🚀 [START] Bắt đầu Stream dữ liệu cho Task: " + taskId);
 
-        try {
-            // Lưu ý nhỏ: findAll() sẽ ổn nếu dữ liệu ít,
-            // nhưng với IQ 130 Tâm nên cân nhắc dùng Stream nếu dữ liệu lên hàng vạn dòng
-            // nhé!
-            var allTransactions = transactionRepo.findAll();
-            int total = allTransactions.size();
-            String filePath = "exports/report_" + taskId + ".csv";
-            File file = new File(filePath);
-            file.getParentFile().mkdirs();
+        long total = transactionRepo.count();
+        if (total == 0) {
+            handleEmptyData(taskId);
+            return;
+        }
 
-            // 1. Dùng FileOutputStream để có quyền kiểm soát byte cao hơn
-            try (FileOutputStream fos = new FileOutputStream(file);
-                    // 2. Ép kiểu UTF-8 chuẩn xác
-                    OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
-                    CSVWriter csvWriter = new CSVWriter(osw)) {
+        String filePath = "exports/report_" + taskId + ".csv";
+        File file = new File(filePath);
+        file.getParentFile().mkdirs();
 
-                // 3. Ghi ký tự BOM (\uFEFF) - Đây là "mật mã" cho Excel
-                osw.write('\uFEFF');
+        try (FileOutputStream fos = new FileOutputStream(file);
+                OutputStreamWriter osw = new OutputStreamWriter(fos, StandardCharsets.UTF_8);
+                CSVWriter csvWriter = new CSVWriter(osw);
+                Stream<Transaction> transactionStream = transactionRepo.streamAllTransactions()) {
 
-                // 4. Ghi Header và Dữ liệu như bình thường
-                csvWriter.writeNext(new String[] { "ID", "Số tiền", "Nội dung", "Ngày tạo" });
+            osw.write('\uFEFF'); // BOM cho Excel
+            csvWriter.writeNext(new String[] { "ID", "Số tiền", "Nội dung", "Ngày tạo" });
 
-                for (int i = 0; i < total; i++) {
-                    var t = allTransactions.get(i);
-                    csvWriter.writeNext(new String[] {
-                            t.getId().toString(),
-                            t.getAmount().toString(),
-                            t.getDescription(), // Tiếng Việt ở đây sẽ được bảo toàn
-                            t.getCreatedAt().toString()
-                    });
+            // Sử dụng AtomicInteger vì biến trong lambda phải là final hoặc effectively
+            // final
+            AtomicInteger count = new AtomicInteger(0);
 
-                    int currentProgress = (int) (((double) (i + 1) / total) * 100);
-                    if (currentProgress % 10 == 0 || i == total - 1) {
-                        updateTaskStatus(taskId, TaskStatus.PROCESSING, currentProgress, null);
+            transactionStream.forEach(t -> {
+                csvWriter.writeNext(new String[] {
+                        t.getId().toString(),
+                        t.getAmount().toString(),
+                        t.getDescription(),
+                        t.getCreatedAt().toString()
+                });
 
-                        // Chỉ báo Telegram ở các mốc quan trọng để tránh bị Spam
-                        if (currentProgress == 50) {
-                            botService.sendMessage("⏳ Task " + taskId + " đã đi được nửa chặng đường (50%).");
-                        }
-                    }
-                }
-            }
+                int currentCount = count.incrementAndGet();
+                updateProgress(taskId, currentCount, total);
+            });
 
-            // BƯỚC CUỐI: Thành công rực rỡ
             updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, "/api/export/download/" + taskId);
-            botService.sendMessage("✅ [SUCCESS] Task " + taskId + " hoàn thành 100%. Tiếng Việt xanh mượt!");
+            botService.sendMessage("✅ [SUCCESS] Task " + taskId + " hoàn thành! RAM vẫn cực kỳ thảnh thơi.");
 
         } catch (Exception e) {
             updateTaskStatus(taskId, TaskStatus.FAILED, 0, null);
-            botService.sendMessage("❌ [FAILED] Task " + taskId + " gặp sự cố: " + e.getMessage());
+            botService.sendMessage("❌ [FAILED] Task " + taskId + " lỗi: " + e.getMessage());
+            log.error("Export Error: ", e);
         }
     }
 
-    // Hàm helper "Ghi sổ" phiên bản nâng cấp có thêm Progress
+    private void updateProgress(String taskId, int currentCount, long total) {
+        int currentProgress = (int) (((double) currentCount / total) * 100);
+        // Chỉ cập nhật DB và báo Bot mỗi khi tăng thêm 10% để tránh nghẽn mạng/DB
+        if (currentProgress % 10 == 0 || currentCount == total) {
+            updateTaskStatus(taskId, TaskStatus.PROCESSING, currentProgress, null);
+            if (currentProgress % 20 == 0) {
+                botService.sendMessage("📊 Task " + taskId + " progress: " + currentProgress + "%");
+            }
+        }
+    }
+
     private void updateTaskStatus(String taskId, TaskStatus status, int progress, String url) {
         taskRepo.findById(taskId).ifPresent(task -> {
             task.setStatus(status);
@@ -91,5 +98,18 @@ public class AsyncExportService {
                 task.setDownloadUrl(url);
             taskRepo.save(task);
         });
+    }
+
+    private void handleEmptyData(String taskId) {
+        log.warn("Task {}: Không tìm thấy dữ liệu giao dịch nào để xuất file.", taskId);
+
+        // 1. Cập nhật trạng thái COMPLETED nhưng tiến độ là 0 hoặc 100 tùy Tâm quy định
+        // Ở đây mình để 100 và URL là null để Angular biết là xong nhưng không có file
+        // tải
+        updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, null);
+
+        // 2. Báo cho "Bot giám sát" để Tâm biết ngay lập tức
+        botService.sendMessage("⚠️ [EMPTY] Task " + taskId
+                + ": Không có dữ liệu giao dịch trong khoảng thời gian này. Hệ thống đã dừng xuất file.");
     }
 }
