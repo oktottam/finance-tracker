@@ -20,4 +20,15 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean(name = "exportTaskExecutor")
+    public Executor exportTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2); // Giữ ít nhất 2 luồng luôn sẵn sàng
+        executor.setMaxPoolSize(5);  // Tối đa 5 luồng nếu dồn dập request
+        executor.setQueueCapacity(100); // Đợi tối đa 100 task trong hàng chờ
+        executor.setThreadNamePrefix("Tâm-Export-");
+        executor.initialize();
+        return executor;
+    }
 }

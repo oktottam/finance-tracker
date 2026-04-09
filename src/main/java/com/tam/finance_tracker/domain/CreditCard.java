@@ -24,7 +24,7 @@ import lombok.Setter;
 @NoArgsConstructor // Tạo constructor không tham số để JPA có thể khởi tạo đối tượng
 @AllArgsConstructor // Tạo constructor với tất cả tham số để dễ dàng tạo đối tượng trong code
 public class CreditCard extends BaseEntity {
-    @Id
+    @Id 
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
