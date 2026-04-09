@@ -21,95 +21,18 @@ import lombok.extern.slf4j.Slf4j;
 public class AsyncExportService {
     private final TransactionRepository transactionRepo;
     private final ExportTaskRepository taskRepo; // 1. Tiêm "Sổ hộ khẩu" vào đây
+    private final TelegramBotService botService; // 🚀 Tiêm "linh hồn" của Bot vào đây
 
     @Async("exportTaskExecutor")
     public void processExport(String taskId) { // Trả về void vì đã có DB theo dõi
-        // // BƯỚC 1: Khởi động - 0%
+        // BƯỚC 1: Khởi động - Báo cho DB và báo cho Tâm qua Telegram
         updateTaskStatus(taskId, TaskStatus.PROCESSING, 0, null);
-
-        // try {
-        // // Lấy dữ liệu và tính tổng số dòng để làm mẫu số
-        // var allTransactions = transactionRepo.findAll();
-        // int total = allTransactions.size();
-
-        // String filePath = "exports/report_" + taskId + ".csv";
-        // File file = new File(filePath);
-        // file.getParentFile().mkdirs();
-
-        // try (PrintWriter writer = new PrintWriter(file)) {
-        // writer.println("ID,Amount,Description,Date");
-
-        // // BƯỚC 2: Thay forEach bằng vòng lặp for để lấy chỉ số (index)
-        // for (int i = 0; i < total; i++) {
-        // var t = allTransactions.get(i);
-        // writer.println(String.format("%s,%s,%s,%s",
-        // t.getId(), t.getAmount(), t.getDescription(), t.getCreatedAt()));
-
-        // // Tính % tiến độ: (vị trí hiện tại / tổng số) * 100
-        // int currentProgress = (int) (((double) (i + 1) / total) * 100);
-
-        // // Tối ưu: Chỉ update DB khi tiến độ nhảy thêm 10% hoặc là dòng cuối cùng
-        // if (currentProgress % 10 == 0 || i == total - 1) {
-        // updateTaskStatus(taskId, TaskStatus.PROCESSING, currentProgress, null);
-        // }
-        // }
-        // }
-
-        // // BƯỚC 3: Hoàn thành - 100% kèm Link download
-        // updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, "/api/export/download/" +
-        // taskId);
-        // log.info("Task {} hoàn thành rực rỡ!", taskId);
-
-        // } catch (Exception e) {
-        // updateTaskStatus(taskId, TaskStatus.FAILED, 0, null);
-        // log.error("Task {} thất bại: {}", taskId, e.getMessage());
-        // }
-
-        // try {
-        // var allTransactions = transactionRepo.findAll();
-        // int total = allTransactions.size();
-        // String filePath = "exports/report_" + taskId + ".csv";
-        // File file = new File(filePath);
-        // file.getParentFile().mkdirs();
-
-        // // Dùng I/O chuẩn: FileWriter -> CSVWriter
-        // try (CSVWriter csvWriter = new CSVWriter(new FileWriter(file))) {
-        // // 1. Ghi Header
-        // String[] header = {"ID", "Amount", "Description", "Date"};
-        // csvWriter.writeNext(header);
-
-        // // 2. Ghi từng dòng và tính toán Progress
-        // for (int i = 0; i < total; i++) {
-        // var t = allTransactions.get(i);
-
-        // // Chuyển object thành mảng String - OpenCSV sẽ lo phần format
-        // String[] data = {
-        // t.getId().toString(),
-        // t.getAmount().toString(),
-        // t.getDescription(),
-        // t.getCreatedAt().toString()
-        // };
-        // csvWriter.writeNext(data);
-
-        // // Cập nhật % tiến độ (Chỉ lưu vào DB mỗi 10% để tối ưu)
-        // int currentProgress = (int) (((double) (i + 1) / total) * 100);
-        // if (currentProgress % 10 == 0 || i == total - 1) {
-        // updateTaskStatus(taskId, TaskStatus.PROCESSING, currentProgress, null);
-        // }
-        // }
-        // } // CSVWriter tự động flush và close ở đây nhờ try-with-resources
-
-        // updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, "/api/export/download/" +
-        // taskId);
-        // log.info("Task {} hoàn thành rực rỡ với OpenCSV!", taskId);
-
-        // } catch (Exception e) {
-        // updateTaskStatus(taskId, TaskStatus.FAILED, 0, null);
-        // log.error("Lỗi I/O khi dùng OpenCSV cho task {}: {}", taskId,
-        // e.getMessage());
-        // }
+        botService.sendMessage("🚀 [START] Task " + taskId + " đã bắt đầu xử lý!");
 
         try {
+            // Lưu ý nhỏ: findAll() sẽ ổn nếu dữ liệu ít,
+            // nhưng với IQ 130 Tâm nên cân nhắc dùng Stream nếu dữ liệu lên hàng vạn dòng
+            // nhé!
             var allTransactions = transactionRepo.findAll();
             int total = allTransactions.size();
             String filePath = "exports/report_" + taskId + ".csv";
@@ -140,16 +63,22 @@ public class AsyncExportService {
                     int currentProgress = (int) (((double) (i + 1) / total) * 100);
                     if (currentProgress % 10 == 0 || i == total - 1) {
                         updateTaskStatus(taskId, TaskStatus.PROCESSING, currentProgress, null);
+
+                        // Chỉ báo Telegram ở các mốc quan trọng để tránh bị Spam
+                        if (currentProgress == 50) {
+                            botService.sendMessage("⏳ Task " + taskId + " đã đi được nửa chặng đường (50%).");
+                        }
                     }
                 }
             }
 
+            // BƯỚC CUỐI: Thành công rực rỡ
             updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, "/api/export/download/" + taskId);
-            log.info("Task {} hoàn thành rực rỡ, tiếng Việt xanh mượt!", taskId);
+            botService.sendMessage("✅ [SUCCESS] Task " + taskId + " hoàn thành 100%. Tiếng Việt xanh mượt!");
 
         } catch (Exception e) {
             updateTaskStatus(taskId, TaskStatus.FAILED, 0, null);
-            log.error("Lỗi xuất file cho Tâm: {}", e.getMessage());
+            botService.sendMessage("❌ [FAILED] Task " + taskId + " gặp sự cố: " + e.getMessage());
         }
     }
 
