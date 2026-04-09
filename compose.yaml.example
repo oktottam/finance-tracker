@@ -1,44 +1,13 @@
-# services:
-#   elasticsearch:
-#     image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.10'
-#     environment:
-#       - 'ELASTIC_PASSWORD=secret'
-#       - 'discovery.type=single-node'
-#       - 'xpack.security.enabled=false'
-#     ports:
-#       - '9200'
-#       - '9300'
-#   postgres:
-#     image: 'postgres:latest'
-#     environment:
-#       - 'POSTGRES_DB=mydatabase'
-#       - 'POSTGRES_PASSWORD=secret'
-#       - 'POSTGRES_USER=myuser'
-#     ports:
-#       - '5432'
-#   rabbitmq:
-#     image: 'rabbitmq:latest'
-#     environment:
-#       - 'RABBITMQ_DEFAULT_PASS=secret'
-#       - 'RABBITMQ_DEFAULT_USER=myuser'
-#     ports:
-#       - '5672'
-#   redis:
-#     image: 'redis:latest'
-#     ports:
-#       - '6379'
-
 services:
   elasticsearch:
     image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.10'
     environment:
-      - 'ELASTIC_PASSWORD=${ELASTIC_PASSWORD}' # Dùng biến môi trường để bảo mật hơn
+      - 'ELASTIC_PASSWORD=${ELASTIC_PASSWORD}'
       - 'discovery.type=single-node'
       - 'xpack.security.enabled=false'
     ports:
-      - '${ELASTIC_PORT}:9200' # Cố định cổng để gọi API Search
+      - '${ES_PORT}:9200'
 
-  # Thêm Kibana vào đây cho Tâm
   kibana:
     image: 'docker.elastic.co/kibana/kibana:7.17.10'
     environment:
@@ -55,16 +24,16 @@ services:
       - 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD}'
       - 'POSTGRES_USER=${POSTGRES_USER}'
     ports:
-      - '${POSTGRES_PORT}:5432' # Cố định để dùng tool quản lý DB cho dễ
+      - '${POSTGRES_PORT}:5432'
 
   rabbitmq:
-    image: 'rabbitmq:3-management-alpine' # Đổi sang bản có UI quản lý
+    image: 'rabbitmq:3-management-alpine'
     environment:
       - 'RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}'
       - 'RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}'
     ports:
       - '${RABBITMQ_PORT}:5672'
-      - '${RABBITMQ_UI_PORT}:15672' # Cổng vào giao diện quản lý RabbitMQ
+      - '${RABBITMQ_UI_PORT}:15672'
 
   redis:
     image: 'redis:latest'
@@ -75,8 +44,7 @@ services:
 
   app:
     env_file:
-      - .env
-      # - .env.local # Để đây để khi cần debug local thì mở ra, cực tiện
+      - .env.secret # Chỉ định file cụ thể ở đây
     build: . # Docker sẽ tự build từ file Dockerfile của Tâm
     container_name: finance-tracker-app
     ports:

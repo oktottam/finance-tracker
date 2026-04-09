@@ -31,3 +31,16 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Secrets and local configs
+src/main/resources/application.yml
+src/main/resources/application-*.yml
+
+# Secrets and Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Docker local overrides
+compose.override.yaml
+docker-compose.override.yml

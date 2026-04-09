@@ -1,0 +1,84 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: finance-tracker
+
+  # Kết nối Database (Khớp với docker-compose)
+  datasource:
+    # Nếu chạy Docker, DB_HOST sẽ là 'postgres'. Nếu chạy IDE, mặc định là 'localhost'
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${POSTGRES_DB:mydatabase} 
+    username: ${POSTGRES_USER:your_username_here}
+    password: ${POSTGRES_PASSWORD:your_password_here}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update # Tự động tạo bảng từ Entity của Tâm
+    show-sql: true # Hiện log SQL để Tâm dễ debug
+    properties:
+      hibernate:
+        "[format_sql]": true
+        "[highlight_sql]": true # Thêm cái này để log SQL có màu cho đẹp Tâm nè
+
+  # Kết nối Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+  # Kết nối Elasticsearch
+  # Elasticsearch (Cập nhật bản mới)
+  elasticsearch:
+    client:
+      uris: http://${ES_HOST:localhost}:9200
+    
+  # Kết nối RabbitMQ
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBIT_USER:your_username_here}
+    password: ${RABBIT_PASSWORD:your_password_here}
+
+  cache:
+    type: redis
+    
+# 🛡️ PHẦN MỚI: Cấu hình Circuit Breaker (Cùng hàng với 'spring')
+resilience4j:
+  circuitbreaker:
+    instances:
+      esService: # Phải khớp với name ở Annotation @CircuitBreaker
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000ms
+        permittedNumberOfCallsInHalfOpenState: 3
+
+# 📜 PHẦN MỚI: Cấu hình Logging để xem Đa luồng
+logging:
+  level:
+    root: INFO
+    "[com.tam.finance_tracker]": DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Cấu hình Swagger để nhà tuyển dụng xem API
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  jwt:
+    # Nếu có biến môi trường JWT_SECRET thì dùng, không thì dùng cái mặc định sau dấu :
+    secret: ${JWT_SECRET:your_jwt_secret_here}
+    expiration-ms: ${JWT_EXPIRATION:86400000} # 1 ngày
+
+telegram:
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN:your_bot_token_here} # Thay bằng Token thật của Tâm
+    chat-id: ${TELEGRAM_CHAT_ID:your_chat_id_here} # Thay bằng Chat ID thật của Tâm

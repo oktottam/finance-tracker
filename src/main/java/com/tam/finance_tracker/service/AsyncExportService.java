@@ -2,12 +2,8 @@ package com.tam.finance_tracker.service;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.CompletableFuture;
-
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
