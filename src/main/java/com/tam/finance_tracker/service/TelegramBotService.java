@@ -8,12 +8,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboard;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -83,7 +86,8 @@ public class TelegramBotService extends TelegramLongPollingBot {
     }
 
     /**
-     * Method cũ để fix lỗi compile cho các class khác (AsyncExportService, WeeklyReportScheduler)
+     * Method cũ để fix lỗi compile cho các class khác (AsyncExportService,
+     * WeeklyReportScheduler)
      */
     public void sendMessage(String chatId, String message, Object replyMarkup) {
         SendMessage sendMessage = new SendMessage();
@@ -107,17 +111,17 @@ public class TelegramBotService extends TelegramLongPollingBot {
      * Thông báo duyệt ngân sách
      */
     public void notifyApproval(String adminChatId, Budget budget) {
-        String text = String.format("🔔 *Duyệt ngân sách*\n📂 Hạng mục: %s\n💰 Số tiền: %,.0f VNĐ", 
-                        budget.getCategory().getName(), budget.getLimitAmount());
-        
+        String text = String.format("🔔 *Duyệt ngân sách*\n📂 Hạng mục: %s\n💰 Số tiền: %,.0f VNĐ",
+                budget.getCategory().getName(), budget.getLimitAmount());
+
         InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();
         List<InlineKeyboardButton> rowInline = new ArrayList<>();
-        
+
         InlineKeyboardButton approveBtn = new InlineKeyboardButton();
         approveBtn.setText("✅ Duyệt");
         approveBtn.setCallbackData("APPROVE_" + budget.getId());
-        
+
         InlineKeyboardButton rejectBtn = new InlineKeyboardButton();
         rejectBtn.setText("❌ Từ chối");
         rejectBtn.setCallbackData("REJECT_" + budget.getId());
@@ -128,5 +132,19 @@ public class TelegramBotService extends TelegramLongPollingBot {
         markupInline.setKeyboard(rowsInline);
 
         sendMessage(adminChatId, text, markupInline);
+    }
+
+    public void sendPhoto(String chatId, InputStream imageStream, String fileName, String caption) {
+        SendPhoto sendPhoto = new SendPhoto();
+        sendPhoto.setChatId(chatId);
+        sendPhoto.setCaption(caption);
+        sendPhoto.setParseMode("Markdown");
+        sendPhoto.setPhoto(new InputFile(imageStream, fileName));
+
+        try {
+            execute(sendPhoto);
+        } catch (TelegramApiException e) {
+            log.error("Lỗi gửi ảnh Telegram: {}", e.getMessage());
+        }
     }
 }
