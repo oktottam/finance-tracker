@@ -1,133 +1,132 @@
 package com.tam.finance_tracker.service;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tam.finance_tracker.domain.Budget;
 import com.tam.finance_tracker.repository.UserRepository;
-
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboard;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-@Service
+import java.util.ArrayList;
+import java.util.List;
+
+@Component
 @Slf4j
-@RequiredArgsConstructor // Để inject ObjectMapper tự động
-public class TelegramBotService {
-    @Value("${telegram.bot.token}")
+@RequiredArgsConstructor
+public class TelegramBotService extends TelegramLongPollingBot {
+
+    @Value("${TELEGRAM_BOT_TOKEN}")
     private String botToken;
 
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper; // Dùng để convert Map sang JSON String
-    private final UserRepository userRepository; // Dùng để tìm User khi họ chat với Bot
-    private final UserService userService; // Dùng để xử lý liên kết tài khoản khi nhận lệnh /start 
+    @Value("${TELEGRAM_BOT_USERNAME:tam_finance_monitor_bot}")
+    private String botUsername;
 
-    public void sendMessage(String chatId, String message, Object replyMarkup) {
-        if (botToken == null) {
-            log.error("Telegram Token chưa được cấu hình!");
+    private final UserRepository userRepository;
+
+    @Override
+    public String getBotUsername() {
+        return botUsername;
+    }
+
+    @Override
+    public String getBotToken() {
+        return botToken;
+    }
+
+    // --- XỬ LÝ NHẬN TIN NHẮN (Long Polling) ---
+    @Override
+    public void onUpdateReceived(Update update) {
+        if (update.hasMessage() && update.getMessage().hasText()) {
+            String messageText = update.getMessage().getText();
+            String chatId = update.getMessage().getChatId().toString();
+
+            if (messageText.startsWith("/start")) {
+                handleStartCommand(chatId, messageText);
+            }
+        } else if (update.hasCallbackQuery()) {
+            String callbackData = update.getCallbackQuery().getData();
+            String chatId = update.getCallbackQuery().getMessage().getChatId().toString();
+            sendSimpleMessage(chatId, "Hệ thống đã ghi nhận lệnh: " + callbackData);
+        }
+    }
+
+    private void handleStartCommand(String chatId, String messageText) {
+        String[] parts = messageText.split(" ");
+        if (parts.length < 2) {
+            sendSimpleMessage(chatId, "⚠️ Vui lòng liên kết tài khoản từ ứng dụng Web của Tâm!");
             return;
         }
 
-        String url = "https://api.telegram.org/bot" + botToken + "/sendMessage";
+        String token = parts[1];
+        userRepository.findByVerificationToken(token).ifPresentOrElse(user -> {
+            user.setTelegramChatId(chatId);
+            user.setVerificationToken(null);
+            userRepository.save(user);
+            sendSimpleMessage(chatId, "✅ Chào *" + user.getUsername() + "*, tài khoản đã liên kết thành công!");
+        }, () -> sendSimpleMessage(chatId, "❌ Mã xác thực không hợp lệ hoặc đã hết hạn."));
+    }
 
-        Map<String, Object> request = new HashMap<>();
-        request.put("chat_id", chatId);
-        request.put("text", message);
-        request.put("parse_mode", "Markdown");
+    // --- CÁC METHOD GỬI TIN NHẮN ---
+
+    /**
+     * Gửi tin nhắn đơn giản (Dùng nội bộ Service)
+     */
+    public void sendSimpleMessage(String chatId, String text) {
+        sendMessage(chatId, text, null);
+    }
+
+    /**
+     * Method cũ để fix lỗi compile cho các class khác (AsyncExportService, WeeklyReportScheduler)
+     */
+    public void sendMessage(String chatId, String message, Object replyMarkup) {
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(chatId);
+        sendMessage.setText(message);
+        sendMessage.setParseMode("Markdown");
+
+        if (replyMarkup instanceof ReplyKeyboard) {
+            sendMessage.setReplyMarkup((ReplyKeyboard) replyMarkup);
+        }
 
         try {
-            if (replyMarkup != null) {
-                // Ép kiểu markup sang JSON String
-                request.put("reply_markup", objectMapper.writeValueAsString(replyMarkup));
-            }
-            restTemplate.postForObject(url, request, String.class);
-            log.info("Đã gửi thông báo tới Telegram thành công!");
-        } catch (Exception e) {
-            log.error("Lỗi gửi Telegram: {}", e.getMessage());
+            execute(sendMessage);
+            log.info(">>> Đã gửi tin nhắn tới Telegram chat: {}", chatId);
+        } catch (TelegramApiException e) {
+            log.error("Lỗi gửi tin nhắn Telegram: {}", e.getMessage());
         }
     }
 
+    /**
+     * Thông báo duyệt ngân sách
+     */
     public void notifyApproval(String adminChatId, Budget budget) {
-        String text = String.format(
-                "🔔 *Yêu cầu duyệt ngân sách*\n" +
-                        "📂 Hạng mục: %s\n" +
-                        "💰 Số tiền: %,.0f VNĐ\n" +
-                        "⏳ Cần: %d người duyệt",
-                budget.getCategory().getName(),
-                budget.getLimitAmount(),
-                budget.getRequiredApprovals());
+        String text = String.format("🔔 *Duyệt ngân sách*\n📂 Hạng mục: %s\n💰 Số tiền: %,.0f VNĐ", 
+                        budget.getCategory().getName(), budget.getLimitAmount());
+        
+        InlineKeyboardMarkup markupInline = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rowsInline = new ArrayList<>();
+        List<InlineKeyboardButton> rowInline = new ArrayList<>();
+        
+        InlineKeyboardButton approveBtn = new InlineKeyboardButton();
+        approveBtn.setText("✅ Duyệt");
+        approveBtn.setCallbackData("APPROVE_" + budget.getId());
+        
+        InlineKeyboardButton rejectBtn = new InlineKeyboardButton();
+        rejectBtn.setText("❌ Từ chối");
+        rejectBtn.setCallbackData("REJECT_" + budget.getId());
 
-        Map<String, Object> markup = Map.of(
-                "inline_keyboard", List.of(
-                        List.of(
-                                Map.of("text", "✅ Duyệt", "callback_data", "APPROVE_" + budget.getId()),
-                                Map.of("text", "❌ Từ chối", "callback_data", "REJECT_" + budget.getId()))));
+        rowInline.add(approveBtn);
+        rowInline.add(rejectBtn);
+        rowsInline.add(rowInline);
+        markupInline.setKeyboard(rowsInline);
 
-        sendMessage(adminChatId, text, markup);
-    }
-
-    @Transactional
-    public void handleStartCommand(String chatId, String messageText) {
-        // 1. Kiểm tra nếu tin nhắn bắt đầu bằng /start
-        if (messageText.startsWith("/start")) {
-            // Tách lấy username (ví dụ: "/start tam_backend" -> "tam_backend")
-            String[] parts = messageText.split(" ");
-
-            if (parts.length < 2) {
-                sendMessage(chatId, "⚠️ Vui lòng truy cập từ ứng dụng Finance Tracker để link tài khoản!", null);
-                return;
-            }
-
-            String username = parts[1];
-
-            // 2. Tìm User trong DB và cập nhật chatId
-            userRepository.findByUsername(username).ifPresentOrElse(user -> {
-                user.setTelegramChatId(chatId);
-                userRepository.save(user); // Lưu "địa chỉ" nhà Tâm vào DB
-
-                sendMessage(chatId, "✅ Chào **" + username + "**! Tài khoản của Tâm đã được liên kết thành công. " +
-                        "Giờ Tâm có thể nhận báo cáo ETL và duyệt ngân sách ngay tại đây.", null);
-            }, () -> {
-                sendMessage(chatId, "❌ Không tìm thấy người dùng: " + username, null);
-            });
-        }
-    }
-
-    @Transactional
-    public void handleLinkAccount(String chatId, String incomingText) {
-        if (incomingText.startsWith("/start ")) {
-            String verificationToken = incomingText.substring(7); // Lấy phần mã sau "/start "
-
-            // Giả sử Tâm lưu mã này vào một trường 'verificationToken' trong bảng User lúc
-            // đăng ký
-            userRepository.findByVerificationToken(verificationToken).ifPresentOrElse(user -> {
-                user.setTelegramChatId(chatId);
-                user.setVerificationToken(null); // Xóa mã sau khi dùng xong để bảo mật
-                userRepository.save(user);
-
-                sendMessage(chatId, "🎉 Chúc mừng **" + user.getUsername() + "**!\n" +
-                        "Tài khoản của Tâm đã được liên kết thành công. " +
-                        "Từ giờ Tâm sẽ nhận được thông báo biến động số dư và duyệt ngân sách tại đây.", null);
-            }, () -> {
-                sendMessage(chatId, "❌ Mã xác thực không hợp lệ hoặc đã hết hạn.", null);
-            });
-        }
-    }
-
-    public void onUpdateReceived(String messageText, String chatId) {
-        if (messageText.startsWith("/start ")) {
-            String token = messageText.substring(7); // Cắt bỏ chữ "/start "
-            try {
-                userService.linkTelegramAccount(token, chatId);
-                sendMessage(chatId, "✅ Liên kết thành công! Từ giờ Tâm có thể nhận báo cáo ETL tại đây.", null);
-            } catch (Exception e) {
-                sendMessage(chatId, "❌ Lỗi: " + e.getMessage(), null);
-            }
-        }
+        sendMessage(adminChatId, text, markupInline);
     }
 }

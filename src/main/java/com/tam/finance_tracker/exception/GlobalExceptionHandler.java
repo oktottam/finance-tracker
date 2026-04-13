@@ -23,6 +23,7 @@ public class GlobalExceptionHandler {
     // Catch nốt các lỗi hệ thống không mong muốn
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex) {
+        ex.printStackTrace();
         ErrorResponse error = new ErrorResponse(
                 LocalDateTime.now(),
                 500,
