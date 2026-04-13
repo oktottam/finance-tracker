@@ -53,4 +53,27 @@ public class TransactionService {
         // 3. Gọi hàm createTransaction cũ (nơi có logic lưu Card và bắn Event)
         return this.createTransaction(transaction, request.getCardId());
     }
+
+    /**
+     * Tạo giao dịch nhanh từ Telegram
+     */
+    @Transactional
+    public Transaction createQuickTransaction(com.tam.finance_tracker.domain.User user, Long amount, Category category) {
+        // 1. Tìm thẻ mặc định của User (Giả sử Tâm lấy thẻ đầu tiên hoặc thẻ có gắn flag default)
+        CreditCard defaultCard = creditCardRepository.findByUser(user)
+                .stream()
+                .findFirst() // Tâm có thể thay bằng logic .filter(CreditCard::isDefault) nếu có cột is_default
+                .orElseThrow(() -> new RuntimeException("Tâm chưa liên kết thẻ nào để trừ tiền!"));
+
+        // 2. Khởi tạo Transaction
+        Transaction transaction = new Transaction();
+        transaction.setAmount(java.math.BigDecimal.valueOf(amount));
+        transaction.setCategory(category);
+        transaction.setDescription("Ghi chép nhanh qua Telegram: " + category.getName());
+        transaction.setTransactionDate(java.time.LocalDateTime.now());
+        transaction.setUser(user);
+
+        // 3. Tái sử dụng logic lưu và bắn Event
+        return this.createTransaction(transaction, defaultCard.getId());
+    }
 }

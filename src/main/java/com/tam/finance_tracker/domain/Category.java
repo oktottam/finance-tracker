@@ -19,6 +19,8 @@ public class Category extends BaseEntity {
     
     private String name; // Ăn uống, Di chuyển...
     private String icon; // Lưu emoji để hiển thị lên Telegram cho đẹp
+
+    private String searchKeywords;
     
     @Enumerated(EnumType.STRING)
     private TransactionType type; // Loại mặc định cho category này (INCOME/EXPENSE)

@@ -2,6 +2,7 @@ package com.tam.finance_tracker.domain;
 
 import java.math.BigDecimal;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -49,4 +50,8 @@ public class Transaction extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user; 
+
+    @NotNull
+    @Column(name = "transaction_date")
+    private java.time.LocalDateTime transactionDate;
 }
