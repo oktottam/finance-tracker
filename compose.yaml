@@ -1,44 +1,16 @@
-# services:
-#   elasticsearch:
-#     image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.10'
-#     environment:
-#       - 'ELASTIC_PASSWORD=secret'
-#       - 'discovery.type=single-node'
-#       - 'xpack.security.enabled=false'
-#     ports:
-#       - '9200'
-#       - '9300'
-#   postgres:
-#     image: 'postgres:latest'
-#     environment:
-#       - 'POSTGRES_DB=mydatabase'
-#       - 'POSTGRES_PASSWORD=secret'
-#       - 'POSTGRES_USER=myuser'
-#     ports:
-#       - '5432'
-#   rabbitmq:
-#     image: 'rabbitmq:latest'
-#     environment:
-#       - 'RABBITMQ_DEFAULT_PASS=secret'
-#       - 'RABBITMQ_DEFAULT_USER=myuser'
-#     ports:
-#       - '5672'
-#   redis:
-#     image: 'redis:latest'
-#     ports:
-#       - '6379'
-
 services:
   elasticsearch:
     image: 'docker.elastic.co/elasticsearch/elasticsearch:7.17.10'
     environment:
-      - 'ELASTIC_PASSWORD=${ELASTIC_PASSWORD}' # Dùng biến môi trường để bảo mật hơn
+      - 'ELASTIC_PASSWORD=${ELASTIC_PASSWORD}'
       - 'discovery.type=single-node'
       - 'xpack.security.enabled=false'
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m" 
     ports:
-      - '${ELASTIC_PORT}:9200' # Cố định cổng để gọi API Search
+      - '${ELASTIC_PORT}:9200'
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
 
-  # Thêm Kibana vào đây cho Tâm
   kibana:
     image: 'docker.elastic.co/kibana/kibana:7.17.10'
     environment:
@@ -55,47 +27,60 @@ services:
       - 'POSTGRES_PASSWORD=${POSTGRES_PASSWORD}'
       - 'POSTGRES_USER=${POSTGRES_USER}'
     ports:
-      - '${POSTGRES_PORT}:5432' # Cố định để dùng tool quản lý DB cho dễ
+      - '${POSTGRES_PORT}:5432'
+    volumes:
+      # SỬA Ở ĐÂY: Dùng đường dẫn chuẩn cho bản Postgres mới nhất
+      - pg_data:/var/lib/postgresql
+    # Thêm healthcheck để App biết khi nào DB thực sự sẵn sàng
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   rabbitmq:
-    image: 'rabbitmq:3-management-alpine' # Đổi sang bản có UI quản lý
+    image: 'rabbitmq:3-management-alpine'
     environment:
       - 'RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}'
       - 'RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}'
     ports:
       - '${RABBITMQ_PORT}:5672'
-      - '${RABBITMQ_UI_PORT}:15672' # Cổng vào giao diện quản lý RabbitMQ
+      - '${RABBITMQ_UI_PORT}:15672'
+    volumes:
+      - rabbit_data:/var/lib/rabbitmq
 
   redis:
     image: 'redis:latest'
-    # Câu lệnh để kích hoạt mật khẩu cho Redis
     command: redis-server --requirepass ${REDIS_PASSWORD}
     ports:
       - '${REDIS_PORT}:6379'
+    volumes:
+      - redis_data:/data
 
-  app:
-    env_file:
-      - .env
-      # - .env.local # Để đây để khi cần debug local thì mở ra, cực tiện
-    build: . # Docker sẽ tự build từ file Dockerfile của Tâm
-    container_name: finance-tracker-app
-    ports:
-      - '8080:8080'
-    environment:
-      # Kết nối Database (Lấy từ .env của Tâm đã có sẵn ở trên)
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
-      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
-      
-      # KẾT NỐI TELEGRAM BOT (Quan trọng nhất cho con Bot giám sát)
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-      
-      # Kết nối các dịch vụ khác nếu cần
-      - SPRING_REDIS_HOST=redis
-      - SPRING_RABBITMQ_HOST=rabbitmq
-    depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-      - elasticsearch
+  # app:
+  #   env_file:
+  #     - .env
+  #   build: .
+  #   container_name: finance-tracker-app
+  #   ports:
+  #     - '8080:8080'
+  #   environment:
+  #     - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+  #     - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+  #     - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+  #     - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+  #     - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+  #     - SPRING_REDIS_HOST=redis
+  #     - SPRING_RABBITMQ_HOST=rabbitmq
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #     - rabbitmq
+  #     - elasticsearch
+
+# Khai báo các volume để Docker quản lý
+volumes:
+  pg_data:
+  es_data:
+  rabbit_data:
+  redis_data:

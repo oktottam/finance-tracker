@@ -1,15 +1,17 @@
 package com.tam.finance_tracker.service;
 
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.tam.finance_tracker.config.RabbitMQConfig;
+import com.tam.finance_tracker.domain.Category;
 import com.tam.finance_tracker.domain.CreditCard;
 import com.tam.finance_tracker.domain.Transaction;
+import com.tam.finance_tracker.dto.TransactionRequest;
+import com.tam.finance_tracker.repository.CategoryRepository;
 import com.tam.finance_tracker.repository.CreditCardRepository;
 import com.tam.finance_tracker.repository.TransactionRepository;
-
+import com.tam.finance_tracker.event.TransactionCreatedEvent;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -17,27 +19,38 @@ import lombok.RequiredArgsConstructor;
 public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final CreditCardRepository creditCardRepository;
-    private final RabbitTemplate rabbitTemplate; // Công cụ bắn tin nhắn sang RabbitMQ
+    private final ApplicationEventPublisher applicationEventPublisher;
+    private final CategoryRepository categoryRepository;
 
+    // Trong TransactionService.java
     @Transactional
     public Transaction createTransaction(Transaction transaction, Long cardId) {
-        // 1. Kiểm tra thẻ có tồn tại không
         CreditCard card = creditCardRepository.findById(cardId)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy thẻ tín dụng!"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy thẻ!"));
 
-        // 2. Logic Senior: Kiểm tra hạn mức (Demo đơn giản)
-        // Trong thực tế, Tâm sẽ tính tổng Transaction của tháng này và so sánh với limitAmount
-        
         transaction.setCard(card);
-        Transaction savedTransaction = transactionRepository.save(transaction);
+        Transaction saved = transactionRepository.save(transaction);
 
-        // 3. (Giai đoạn sau) Gửi tin nhắn qua RabbitMQ để đồng bộ Elasticsearch tại đây
-        // Bắn tin nhắn Async sang RabbitMQ để đồng bộ Elasticsearch
-        rabbitTemplate.convertAndSend(
-            RabbitMQConfig.EXCHANGE, 
-            RabbitMQConfig.ROUTING_KEY, 
-            savedTransaction.getId() // Gửi ID của giao dịch đi là đủ gọn (Simple is the best)
-        );
-        return savedTransaction;
+        // Thay vì gửi trực tiếp, ta bắn một Event nội bộ của Spring
+        // Event này sẽ được xử lý sau khi Transaction COMMIT
+        applicationEventPublisher.publishEvent(new TransactionCreatedEvent(saved.getId()));
+
+        return saved;
+    }
+
+    @Transactional
+    public Transaction createTransactionFromRequest(TransactionRequest request) {
+        // 1. Tìm Category từ categoryId trong request
+        Category category = categoryRepository.findById(request.getCategoryId())
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy danh mục!"));
+
+        // 2. Map dữ liệu vào Entity
+        Transaction transaction = new Transaction();
+        transaction.setAmount(request.getAmount());
+        transaction.setDescription(request.getDescription());
+        transaction.setCategory(category);
+
+        // 3. Gọi hàm createTransaction cũ (nơi có logic lưu Card và bắn Event)
+        return this.createTransaction(transaction, request.getCardId());
     }
 }

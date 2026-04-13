@@ -21,11 +21,7 @@ public class TransactionController {
 
     @PostMapping
     public ResponseEntity<Transaction> createTransaction(@Valid @RequestBody TransactionRequest request) {
-        Transaction transaction = new Transaction();
-        transaction.setAmount(request.getAmount());
-        transaction.setDescription(request.getDescription());
-        transaction.setCategory(request.getCategory());
-        
-        return ResponseEntity.ok(transactionService.createTransaction(transaction, request.getCardId()));
+        // Controller bây giờ chỉ đóng vai trò điều hướng, cực sạch!
+        return ResponseEntity.ok(transactionService.createTransactionFromRequest(request));
     }
 }

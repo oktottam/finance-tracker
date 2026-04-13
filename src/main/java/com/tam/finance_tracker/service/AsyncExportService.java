@@ -12,8 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.opencsv.CSVWriter;
+import com.tam.finance_tracker.domain.ExportTask;
 import com.tam.finance_tracker.domain.TaskStatus;
 import com.tam.finance_tracker.domain.Transaction;
+import com.tam.finance_tracker.domain.User;
 import com.tam.finance_tracker.repository.ExportTaskRepository;
 import com.tam.finance_tracker.repository.TransactionRepository;
 
@@ -31,13 +33,26 @@ public class AsyncExportService {
     @Async("exportTaskExecutor")
     @Transactional(readOnly = true) // BẮT BUỘC để duy trì Connection cho Stream
     public void processExport(String taskId) { // Trả về void vì đã có DB theo dõi
-        // BƯỚC 1: Khởi động - Báo cho DB và báo cho Tâm qua Telegram
+        // 1. Tìm Task
+        ExportTask task = taskRepo.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy Task ID: " + taskId));
+
+        // 2. Lấy User để có chatId (Giả sử task có chứa ownerId hoặc liên kết User)
+        User user = task.getOwner();
+        if (user == null || user.getTelegramChatId() == null) {
+            log.error("Task {} không có thông tin Telegram người dùng!", taskId);
+            return;
+        }
+
+        String userChatId = user.getTelegramChatId();
+
+        // BÁO BẮT ĐẦU
         updateTaskStatus(taskId, TaskStatus.PROCESSING, 0, null);
-        botService.sendMessage("🚀 [START] Bắt đầu Stream dữ liệu cho Task: " + taskId);
+        botService.sendMessage(userChatId, "🚀 [START] Bắt đầu trích xuất dữ liệu cho Tâm...", null);
 
         long total = transactionRepo.count();
         if (total == 0) {
-            handleEmptyData(taskId);
+            handleEmptyData(taskId, userChatId);
             return;
         }
 
@@ -66,26 +81,26 @@ public class AsyncExportService {
                 });
 
                 int currentCount = count.incrementAndGet();
-                updateProgress(taskId, currentCount, total);
+                updateProgress(taskId, userChatId, currentCount, total);
             });
 
             updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, "/api/export/download/" + taskId);
-            botService.sendMessage("✅ [SUCCESS] Task " + taskId + " hoàn thành! RAM vẫn cực kỳ thảnh thơi.");
+            botService.sendMessage(userChatId, "✅ [SUCCESS] File của Tâm đã sẵn sàng!", null);
 
         } catch (Exception e) {
             updateTaskStatus(taskId, TaskStatus.FAILED, 0, null);
-            botService.sendMessage("❌ [FAILED] Task " + taskId + " lỗi: " + e.getMessage());
-            log.error("Export Error: ", e);
+            botService.sendMessage(userChatId, "❌ [FAILED] Có lỗi rồi Tâm ơi: " + e.getMessage(), null);
         }
     }
 
-    private void updateProgress(String taskId, int currentCount, long total) {
+    private void updateProgress(String taskId, String chatId, int currentCount, long total) {
         int currentProgress = (int) (((double) currentCount / total) * 100);
-        // Chỉ cập nhật DB và báo Bot mỗi khi tăng thêm 10% để tránh nghẽn mạng/DB
         if (currentProgress % 10 == 0 || currentCount == total) {
             updateTaskStatus(taskId, TaskStatus.PROCESSING, currentProgress, null);
+
+            // Chỉ báo qua Bot mỗi 20% để tránh bị Telegram đánh "spam" (Rate limit)
             if (currentProgress % 20 == 0) {
-                botService.sendMessage("📊 Task " + taskId + " progress: " + currentProgress + "%");
+                botService.sendMessage(chatId, "📊 Tiến độ: " + currentProgress + "%", null);
             }
         }
     }
@@ -100,16 +115,15 @@ public class AsyncExportService {
         });
     }
 
-    private void handleEmptyData(String taskId) {
-        log.warn("Task {}: Không tìm thấy dữ liệu giao dịch nào để xuất file.", taskId);
+    private void handleEmptyData(String taskId, String chatId) {
+        log.warn("Task {}: Không tìm thấy dữ liệu giao dịch cho user {}", taskId, chatId);
 
-        // 1. Cập nhật trạng thái COMPLETED nhưng tiến độ là 0 hoặc 100 tùy Tâm quy định
-        // Ở đây mình để 100 và URL là null để Angular biết là xong nhưng không có file
-        // tải
+        // 1. Cập nhật DB
         updateTaskStatus(taskId, TaskStatus.COMPLETED, 100, null);
 
-        // 2. Báo cho "Bot giám sát" để Tâm biết ngay lập tức
-        botService.sendMessage("⚠️ [EMPTY] Task " + taskId
-                + ": Không có dữ liệu giao dịch trong khoảng thời gian này. Hệ thống đã dừng xuất file.");
+        // 2. Báo đúng người, đúng việc
+        String alertMsg = "⚠️ *Thông báo*: Task #" + taskId
+                + "\nKhông có dữ liệu giao dịch trong khoảng thời gian này. Tâm kiểm tra lại nhé!";
+        botService.sendMessage(chatId, alertMsg, null);
     }
 }

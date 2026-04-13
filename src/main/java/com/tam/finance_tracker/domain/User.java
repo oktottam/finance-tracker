@@ -26,4 +26,14 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     private Role role; // Một User có một Role (hoặc dùng Set<Role> nếu muốn đa quyền)
+
+    // QUAN TRỌNG: Lưu ID chat Telegram để gửi thông báo/file
+    @Column(name = "telegram_chat_id", unique = true)
+    private String telegramChatId;
+
+    // Tùy chọn: Trạng thái tài khoản
+    private boolean active = true;
+
+    @Column(name = "verification_token", unique = true)
+    private String verificationToken; // Mã tạm thời để link tài khoản
 }

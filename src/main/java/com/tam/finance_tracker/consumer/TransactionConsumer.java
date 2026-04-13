@@ -25,7 +25,7 @@ public class TransactionConsumer {
                     .id(transaction.getId())
                     .description(transaction.getDescription())
                     .amount(transaction.getAmount())
-                    .category(transaction.getCategory().name())
+                    .category(transaction.getCategory() != null ? transaction.getCategory().getName() : "Khác")
                     .createdAt(transaction.getCreatedAt())
                     .build();
             
